@@ -21,10 +21,11 @@ class Bot:
     def __init__(self, token):
 
         self.chat_id = 0
-        self.store_url = "https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&search=wt_air%2Cwt_rank8%2Cwt_rank7&tag=1"
+        # self.store_url = "https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&search=wt_air%2Cwt_rank8%2Cwt_rank7&tag=1"
         self.previous_packs = {}
-        self.selected_tiers = set()
-        self.previous_selected_tiers = set()
+        self.selected_tiers = set({"%2Cwt_rank8", "%2Cwt_rank7"})
+        self.previous_selected_tiers = set({"%2Cwt_rank8", "%2Cwt_rank7"})
+        self.store_url = "https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&search=wt_air" + ''.join(self.selected_tiers) + "&tag=1"
 
         self.token = token
         self.application = ApplicationBuilder().token(api_token).build()
@@ -140,10 +141,18 @@ class Bot:
         keyboard = []
         counter = 1
 
+        # for row in range(2):
+        #     keyboard_row = []
+        #     for col in range(4):
+        #         keyboard_row.append(InlineKeyboardButton(str(counter), callback_data=f"tier_{counter}"))
+        #         counter += 1
+        #     keyboard.append(keyboard_row)
+
         for row in range(2):
             keyboard_row = []
             for col in range(4):
-                keyboard_row.append(InlineKeyboardButton(str(counter), callback_data=f"tier_{counter}"))
+                text = f"{counter} {'✅' if ('%2Cwt_rank' + str(counter)) in self.selected_tiers else ''}"
+                keyboard_row.append(InlineKeyboardButton(text, callback_data=f"tier_{counter}"))
                 counter += 1
             keyboard.append(keyboard_row)
 
