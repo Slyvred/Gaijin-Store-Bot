@@ -19,19 +19,19 @@ logging.basicConfig(
 
 class Bot:
     def __init__(self, token):
-
-        self.chat_id = 0
-        # self.store_url = "https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&search=wt_air%2Cwt_rank8%2Cwt_rank7&tag=1"
-        self.previous_packs = {}
-        self.selected_tiers = set({"%2Cwt_rank8", "%2Cwt_rank7"})
-        self.previous_selected_tiers = set({"%2Cwt_rank8", "%2Cwt_rank7"})
-        self.store_url = "https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&search=wt_air" + ''.join(self.selected_tiers) + "&tag=1"
+        self.previous_packs = {} # Dictionnaire qui contient les packs précédents {chat_id: {label: {price: _price_, link: _link_}}
+        self.selected_tiers = {} # Les tiers des avions sélectionnés {chat_id: {"%2Cwt_rank8", "%2Cwt_rank7"}}
+        self.previous_selected_tiers = {} # Les tiers des avions sélectionnés précédemment
+        self.store_url = {} # L'url du store de War Thunder avec les tiers sélectionnés {chat_id: "https://store.gaijin.net/..."}
 
         self.token = token
         self.application = ApplicationBuilder().token(api_token).build()
 
         self.start_handler = CommandHandler('start', self.start_callback)
         self.application.add_handler(self.start_handler)
+
+        self.help_handler = CommandHandler('help', self.help_callback)
+        self.application.add_handler(self.help_handler)
 
         self.get_packs_handler = CommandHandler('packs', self.get_packs_callback)
         self.application.add_handler(self.get_packs_handler)
@@ -73,14 +73,14 @@ class Bot:
         """
         return float(pack['price'].split(' ')[0])
 
-    def __scrap_packs(self):
+    def __scrap_packs(self, chat_id):
         """Scrap le site de War Thunder pour récupérer les packs
 
         Returns:
             dict: Un dictionnaire qui contient le nom de chaque pack (comme clée) avec leur prix et lien comme valeur
         """
         try:
-            page = rq.get(self.store_url)
+            page = rq.get(self.store_url.get(chat_id))
             soup = bs4.BeautifulSoup(page.content, 'lxml')
             packs = soup.find_all('div', class_='showcase__item product-widget js-cart__cart-item')
             labels = [pack.find('div', class_='product-widget-description__title').text.strip() for pack in packs]
@@ -93,6 +93,17 @@ class Bot:
         except (rq.RequestException, bs4.BeautifulSoup) as e:
             logging.error(f"Erreur lors de la récupération des packs: {e}")
             return {}
+        
+    @send_action(action=ChatAction.TYPING)
+    async def help_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Répond à la commande /help, envoie un message d'aide
+
+        Args:
+            update (Update): L'objet Update qui contient les informations de la mise à jour
+            context (ContextTypes.DEFAULT_TYPE): Le contexte de l'application
+        """
+        text = "Ce bot vous permet de consulter les packs de War Thunder. Voici les commandes disponibles:\n\n/start - Démarre le bot et envoie un message de bienvenue.\n/packs - Affiche les packs disponibles.\n/tiers - Permet de choisir les tiers des avions que vous souhaitez voir dans les packs.\n/help - Affiche ce message d'aide."
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
     @send_action(action=ChatAction.TYPING)
     async def start_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -102,8 +113,11 @@ class Bot:
             update (Update): L'objet Update qui contient les informations de la mise à jour
             context (ContextTypes.DEFAULT_TYPE): Le contexte de l'application
         """
-        self.chat_id = update.effective_chat.id
-        self.previous_packs = self.__scrap_packs()
+        self.selected_tiers.update({update.effective_chat.id: {"%2Cwt_rank8", "%2Cwt_rank7"}})
+        self.previous_selected_tiers = self.selected_tiers.copy()
+        self.store_url.update({update.effective_chat.id: "https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&search=wt_air" + ''.join(self.selected_tiers[update.effective_chat.id]) + "&tag=1"})
+        self.previous_packs[update.effective_chat.id] = self.__scrap_packs(update.effective_chat.id)
+
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Bonjour, je suis un bot qui vous permet de consulter les packs de War Thunder. Pour voir les packs disponibles, tapez /packs.\nVous recevrez une notification si le prix d'un pack a changé ou si un nouveau pack est disponible.")
 
     @send_action(action=ChatAction.TYPING)
@@ -114,9 +128,8 @@ class Bot:
             update (Update): L'objet Update qui contient les informations de la mise à jour
             context (ContextTypes.DEFAULT_TYPE): Le contexte de l'application
         """
-        self.chat_id = update.effective_chat.id
 
-        packs = self.__scrap_packs()
+        packs = self.__scrap_packs(update.effective_chat.id)
         if not packs:
             logging.error("Erreur lors du scraping des packs.")
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Erreur lors du scraping des packs.")
@@ -124,15 +137,15 @@ class Bot:
         
         text = "\n\n".join([f"<a href='{pack['link']}'><b>{label}</b></a>\nPrix: {pack['price']}" for label, pack in packs.items()])
         for label, pack in packs.items():
-            if label not in self.previous_packs.keys() and self.previous_packs.keys() != {} and self.previous_selected_tiers == self.selected_tiers:
+            if label not in self.previous_packs[update.effective_chat.id].keys() and self.previous_packs[update.effective_chat.id].keys() != {} and self.previous_selected_tiers[update.effective_chat.id] == self.selected_tiers[update.effective_chat.id]:
                 logging.info(f"Le pack {label} est nouveau!\nPrix: {pack['price']}")
                 text += f"\n\nLe pack <a href='{pack['link']}'>{label}</a> est nouveau!\nPrix: {pack['price']}"
 
-            if label in self.previous_packs.keys() and pack['price'] != self.previous_packs[label]['price']:
+            if label in self.previous_packs[update.effective_chat.id].keys() and pack['price'] != self.previous_packs[update.effective_chat.id][label]['price']:
                 logging.info(f"Le pack {label} a changé de prix.\nAncien prix: {self.previous_packs[label]['price']}\nNouveau prix: {pack['price']}")
-                text += f"\n\nLe pack <a href='{pack['link']}'>{label}</a> a changé de prix.\nAncien prix: {self.previous_packs[label]['price']}\nNouveau prix: {pack['price']}"
+                text += f"\n\nLe pack <a href='{pack['link']}'>{label}</a> a changé de prix.\nAncien prix: {self.previous_packs[update.effective_chat.id][label]['price']}\nNouveau prix: {pack['price']}"
 
-        self.previous_packs = packs
+        self.previous_packs[update.effective_chat.id] = packs
 
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode=ParseMode.HTML)
 
@@ -144,7 +157,7 @@ class Bot:
         for row in range(2):
             keyboard_row = []
             for col in range(4):
-                text = f"{counter} {'✅' if ('%2Cwt_rank' + str(counter)) in self.selected_tiers else ''}"
+                text = f"{counter} {'✅' if ('%2Cwt_rank' + str(counter)) in self.selected_tiers[update.effective_chat.id] else ''}"
                 keyboard_row.append(InlineKeyboardButton(text, callback_data=f"tier_{counter}"))
                 counter += 1
             keyboard.append(keyboard_row)
@@ -155,19 +168,16 @@ class Bot:
     async def inline_button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         tier = '%2Cwt_rank' + query.data.split('_')[1]
-        # tier = query.data.split('_')[1]
 
-
-        if tier in self.selected_tiers:
-            self.previous_selected_tiers = self.selected_tiers.copy()
-            self.selected_tiers.remove(tier)
-            self.store_url = "https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&search=wt_air" + ''.join(self.selected_tiers) + "&tag=1"
+        if tier in self.selected_tiers[update.effective_chat.id]:
+            self.previous_selected_tiers[update.effective_chat.id] = self.selected_tiers[update.effective_chat.id].copy()
+            self.selected_tiers[update.effective_chat.id].remove(tier)
+            self.store_url[update.effective_chat.id] = "https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&search=wt_air" + ''.join(self.selected_tiers[update.effective_chat.id]) + "&tag=1"
         else:
-            self.previous_selected_tiers = self.selected_tiers.copy()
-            self.selected_tiers.add(tier)
-            self.store_url = "https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&search=wt_air" + ''.join(self.selected_tiers) + "&tag=1"
+            self.previous_selected_tiers[update.effective_chat.id] = self.selected_tiers[update.effective_chat.id].copy()
+            self.selected_tiers[update.effective_chat.id].add(tier)
+            self.store_url[update.effective_chat.id] = "https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&search=wt_air" + ''.join(self.selected_tiers[update.effective_chat.id]) + "&tag=1"
 
-        logging.info(f"Selected tiers: {self.selected_tiers}")
         await query.answer()
 
         keyboard = []
@@ -176,7 +186,7 @@ class Bot:
         for row in range(2):
             keyboard_row = []
             for col in range(4):
-                text = f"{counter} {'✅' if ('%2Cwt_rank' + str(counter)) in self.selected_tiers else ''}"
+                text = f"{counter} {'✅' if ('%2Cwt_rank' + str(counter)) in self.selected_tiers[update.effective_chat.id] else ''}"
                 keyboard_row.append(InlineKeyboardButton(text, callback_data=f"tier_{counter}"))
                 counter += 1
             keyboard.append(keyboard_row)
@@ -187,37 +197,33 @@ class Bot:
 
     @send_action(action=ChatAction.TYPING)
     async def send_price_change_notification_callback(self, context: ContextTypes.DEFAULT_TYPE):
-        """Envoie une notification si le prix d'un pack a changé avec le lien du pack concerné, l'ancien et le nouveau prix
-
-        Args:
-            context (ContextTypes.DEFAULT_TYPE): Le contexte de l'application
-        """
-
-        if self.chat_id == 0:
-            logging.error("chat_id n'est pas défini!")
+        """Envoie une notification si le prix d'un pack a changé"""
+        if not self.selected_tiers.keys():
+            logging.error("Aucun utilisateur n'est défini!")
             return
 
-        packs = self.__scrap_packs()
+        for chat_id in self.selected_tiers.keys():
+            packs = self.__scrap_packs(self.selected_tiers[chat_id])
 
-        if not packs:
-            logging.error("Erreur lors du scraping des packs.")
-            await context.bot.send_message(chat_id=self.chat_id, text="Erreur lors du scraping des packs.")
-            return
+            if not packs:
+                logging.error(f"Erreur lors du scraping des packs pour le chat {chat_id}.")
+                await context.bot.send_message(chat_id=chat_id, text="Erreur lors du scraping des packs.")
+                continue
 
-        text = "<b>⚠️ Alerte ! ⚠️</b>"
+            text = "<b>⚠️ Alerte ! ⚠️</b>"
 
-        for label, pack in packs.items():
-            if label not in self.previous_packs.keys() and self.previous_packs.keys() != {} and self.previous_selected_tiers == self.selected_tiers:
-                logging.info(f"Le pack {label} est nouveau!\nPrix: {pack['price']}")
-                text += f"\n\nLe pack <a href='{pack['link']}'>{label}</a> est nouveau!\nPrix: {pack['price']}"
+            for label, pack in packs.items():
+                if label not in self.previous_packs[chat_id].keys() and self.previous_packs[chat_id].keys() != {} and self.previous_selected_tiers[chat_id] == self.selected_tiers[chat_id]:
+                    logging.info(f"Le pack {label} est nouveau!\nPrix: {pack['price']}")
+                    text += f"\n\nLe pack <a href='{pack['link']}'>{label}</a> est nouveau!\nPrix: {pack['price']}"
 
-            if label in self.previous_packs.keys() and pack['price'] != self.previous_packs[label]['price']:
-                logging.info(f"Le pack {label} a changé de prix.\nAncien prix: {self.previous_packs[label]['price']}\nNouveau prix: {pack['price']}")
-                text += f"\n\nLe pack <a href='{pack['link']}'>{label}</a> a changé de prix.\nAncien prix: {self.previous_packs[label]['price']}\nNouveau prix: {pack['price']}"
+                if label in self.previous_packs[chat_id].keys() and pack['price'] != self.previous_packs[chat_id][label]['price']:
+                    logging.info(f"Le pack {label} a changé de prix.\nAncien prix: {self.previous_packs[chat_id][label]['price']}\nNouveau prix: {pack['price']}")
+                    text += f"\n\nLe pack <a href='{pack['link']}'>{label}</a> a changé de prix.\nAncien prix: {self.previous_packs[chat_id][label]['price']}\nNouveau prix: {pack['price']}"
 
-        self.previous_packs = packs
-        if text != "<b>⚠️ Alerte ! ⚠️</b>":
-            await context.bot.send_message(chat_id=self.chat_id, text=text, parse_mode=ParseMode.HTML)
+            self.previous_packs[chat_id] = packs
+            if text != "<b>⚠️ Alerte ! ⚠️</b>":
+                await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML)
 
 
 if __name__ == '__main__':
