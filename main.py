@@ -76,6 +76,9 @@ class Bot:
     def __scrap_packs(self, chat_id):
         """Scrap le site de War Thunder pour récupérer les packs
 
+        Args:
+            chat_id (int): L'identifiant du chat
+
         Returns:
             dict: Un dictionnaire qui contient le nom de chaque pack (comme clée) avec leur prix et lien comme valeur
         """
@@ -118,7 +121,7 @@ class Bot:
         self.store_url.update({update.effective_chat.id: "https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&search=wt_air" + ''.join(self.selected_tiers[update.effective_chat.id]) + "&tag=1"})
         self.previous_packs[update.effective_chat.id] = self.__scrap_packs(update.effective_chat.id)
 
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="Bonjour, je suis un bot qui vous permet de consulter les packs de War Thunder. Pour voir les packs disponibles, tapez /packs.\nVous recevrez une notification si le prix d'un pack a changé ou si un nouveau pack est disponible.")
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Bonjour, je suis un bot qui vous permet de consulter les packs de War Thunder. Pour voir les commandes disponibles, tapez /help.\nVous recevrez une notification si le prix d'un pack a changé ou si un nouveau pack est disponible.")
 
     @send_action(action=ChatAction.TYPING)
     async def get_packs_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
