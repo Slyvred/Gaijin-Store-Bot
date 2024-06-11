@@ -141,13 +141,6 @@ class Bot:
         keyboard = []
         counter = 1
 
-        # for row in range(2):
-        #     keyboard_row = []
-        #     for col in range(4):
-        #         keyboard_row.append(InlineKeyboardButton(str(counter), callback_data=f"tier_{counter}"))
-        #         counter += 1
-        #     keyboard.append(keyboard_row)
-
         for row in range(2):
             keyboard_row = []
             for col in range(4):
@@ -209,10 +202,6 @@ class Bot:
         if not packs:
             logging.error("Erreur lors du scraping des packs.")
             await context.bot.send_message(chat_id=self.chat_id, text="Erreur lors du scraping des packs.")
-            return
-
-        if not packs:
-            logging.error("Erreur lors du scraping des packs.")
             return
 
         text = "<b>⚠️ Alerte ! ⚠️</b>"
