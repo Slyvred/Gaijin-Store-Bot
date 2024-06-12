@@ -113,6 +113,8 @@ class Bot:
         self.previous_packs[update.effective_chat.id] = self.__scrap_packs(update.effective_chat.id)
 
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Bonjour, je suis un bot qui vous permet de consulter les packs de War Thunder. Pour voir les commandes disponibles, tapez /help.\nVous recevrez une notification si le prix d'un pack a changé ou si un nouveau pack est disponible.")
+        await self.set_tiers_callback(update, context)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Maintenant, tapez /packs pour voir les packs disponibles.")
 
     @send_action(action=ChatAction.TYPING)
     async def get_packs_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
