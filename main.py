@@ -206,6 +206,7 @@ class Bot:
             return
 
         for chat_id in self.selected_tiers.keys():
+            logging.info(f"Verification des packs pour le chat {chat_id}...")
             packs = self.__scrap_packs(self.selected_tiers[chat_id])
 
             if not packs:
@@ -227,6 +228,8 @@ class Bot:
             self.previous_packs[chat_id] = packs
             if text != "<b>⚠️ Alerte ! ⚠️</b>":
                 await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML)
+            else: 
+                logging.info("Aucun changement détecté, aucune notification envoyée.")
 
 
 if __name__ == '__main__':
