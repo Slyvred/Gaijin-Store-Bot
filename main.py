@@ -27,20 +27,11 @@ class Bot:
         self.token = token
         self.application = ApplicationBuilder().token(api_token).build()
 
-        self.start_handler = CommandHandler('start', self.start_callback)
-        self.application.add_handler(self.start_handler)
-
-        self.help_handler = CommandHandler('help', self.help_callback)
-        self.application.add_handler(self.help_handler)
-
-        self.get_packs_handler = CommandHandler('packs', self.get_packs_callback)
-        self.application.add_handler(self.get_packs_handler)
-
-        self.set_tiers_handler = CommandHandler('tiers', self.set_tiers_callback)
-        self.application.add_handler(self.set_tiers_handler)
-
-        self.inline_callback_handler = CallbackQueryHandler(self.inline_button_callback)
-        self.application.add_handler(self.inline_callback_handler)
+        self.application.add_handler(CommandHandler('start', self.start_callback))
+        self.application.add_handler(CommandHandler('help', self.help_callback))
+        self.application.add_handler(CommandHandler('packs', self.get_packs_callback))
+        self.application.add_handler(CommandHandler('tiers', self.set_tiers_callback))
+        self.application.add_handler(CallbackQueryHandler(self.inline_button_callback))
 
         # Automatiser l'envoi des notifications de changement de prix, toutes les 5 minutes
         self.job_queue = self.application.job_queue
