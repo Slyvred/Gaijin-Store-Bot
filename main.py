@@ -189,7 +189,6 @@ class Bot:
         await query.edit_message_reply_markup(reply_markup=reply_markup)
 
 
-    @send_action(action=ChatAction.TYPING)
     async def send_price_change_notification_callback(self, context: ContextTypes.DEFAULT_TYPE):
         """Envoie une notification si le prix d'un pack a changé"""
         if not self.selected_tiers.keys():
@@ -198,11 +197,10 @@ class Bot:
 
         for chat_id in self.selected_tiers.keys():
             logging.info(f"Verification des packs pour le chat {chat_id}...")
-            packs = self.__scrap_packs(self.selected_tiers[chat_id])
+            packs = self.__scrap_packs(chat_id)
 
             if not packs:
                 logging.error(f"Erreur lors du scraping des packs pour le chat {chat_id}.")
-                await context.bot.send_message(chat_id=chat_id, text="Erreur lors du scraping des packs.")
                 continue
 
             text = "<b>⚠️ Alerte ! ⚠️</b>"
@@ -218,10 +216,8 @@ class Bot:
 
             self.previous_packs[chat_id] = packs
             if text != "<b>⚠️ Alerte ! ⚠️</b>":
+                logging.info("Changement détecté! Envoi de la notification...")
                 await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML)
-            else: 
-                logging.info("Aucun changement détecté, aucune notification envoyée.")
-
 
 if __name__ == '__main__':
     bot = Bot(api_token)
