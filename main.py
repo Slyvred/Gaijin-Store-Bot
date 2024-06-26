@@ -78,13 +78,21 @@ class Bot:
             soup = bs4.BeautifulSoup(page.content, 'lxml')
             packs = soup.find_all('div', class_='showcase__item product-widget js-cart__cart-item')
             labels = [pack.find('div', class_='product-widget-description__title').text.strip() for pack in packs]
-            prices = [pack.find('span', class_='showcase-item-price__default').text.strip() for pack in packs]
+            prices = []
+
+            # Durant les soldes, le prix est affiché dans une balise différente
+            for pack in packs:
+                if pack.find('span', class_='showcase-item-price__default') is None:
+                    prices.append(pack.find('span', class_='showcase-item-price__new').text.strip())
+                else:
+                    prices.append(pack.find('span', class_='showcase-item-price__default').text.strip())
+            
             links = [pack.find('a', class_='product-widget__link').get('href') for pack in packs]
 
             # Map qui contient label (clée), prix et lien comme valeur
             packs = {label: {'price': price, 'link': link} for label, price, link in zip(labels, prices, links)}
             return packs
-        except (rq.RequestException, bs4.BeautifulSoup) as e:
+        except (rq.RequestException, bs4.BeautifulSoup, AttributeError) as e:
             logging.error(f"Erreur lors de la récupération des packs: {e}")
             return {}
         
@@ -138,7 +146,7 @@ class Bot:
                 text += f"\n\nLe pack <a href='{pack['link']}'>{label}</a> est nouveau!\nPrix: {pack['price']}"
 
             if label in self.previous_packs[update.effective_chat.id].keys() and pack['price'] != self.previous_packs[update.effective_chat.id][label]['price']:
-                logging.info(f"Le pack {label} a changé de prix.\nAncien prix: {self.previous_packs[label]['price']}\nNouveau prix: {pack['price']}")
+                logging.info(f"Le pack {label} a changé de prix.\nAncien prix: {self.previous_packs[update.effective_chat.id][label]['price']}\nNouveau prix: {pack['price']}\n")
                 text += f"\n\nLe pack <a href='{pack['link']}'>{label}</a> a changé de prix.\nAncien prix: {self.previous_packs[update.effective_chat.id][label]['price']}\nNouveau prix: {pack['price']}"
 
         self.previous_packs[update.effective_chat.id] = packs
