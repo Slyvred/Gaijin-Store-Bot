@@ -7,13 +7,9 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-WORKDIR /src
-
-COPY . /app/
-
-WORKDIR /app
+COPY src/ /app/
 
 ENV PYTHONUNBUFFERED=1
 
 # Commande pour exécuter l'application
-CMD ["python", "main.py"]
+CMD ["python", "src/main.py"]
