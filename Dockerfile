@@ -7,7 +7,11 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+WORKDIR /src
+
+COPY . /app/
+
+WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1
 
