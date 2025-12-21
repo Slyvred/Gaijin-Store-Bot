@@ -35,6 +35,7 @@ class Nation(Enum):
     CHINA = "wt_china"
     FRANCE = "wt_france"
     ITALY = "wt_italy"
+    ALL = "all"
 
 
 class VehiculeType(Enum):
@@ -58,7 +59,6 @@ class Bot:
 
         self.application.add_handlers(
             [
-                CommandHandler("hello", self.hello),
                 CommandHandler("tiers", self.send_keyboard_tiers),
                 CommandHandler("nations", self.send_keyboard_nations),
                 CommandHandler("vehicles", self.send_keyboard_vehicules),
@@ -66,17 +66,8 @@ class Bot:
             ]
         )
 
-    async def hello(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        await update.message.reply_text(f"Hello {update.effective_user.first_name}")  # type:ignore
-
-    async def _send_keyboard_enum(
-        self,
-        enum: EnumType,
-        line_width: int,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
-    ) -> None:
-        keyboard_auto = []
+    def _generate_markup(self, enum: EnumType, line_width: int, update: Update):
+        keyboard = []
         rows = []
 
         user_config = self.users_configs[update.effective_user.id]
@@ -105,13 +96,23 @@ class Bot:
 
             rows.append(InlineKeyboardButton(text=text, callback_data=item.value))
             if len(rows) == line_width:
-                keyboard_auto.append(rows)
+                keyboard.append(rows)
                 rows = []
 
+        # Last row
         if rows:
-            keyboard_auto.append(rows)
+            keyboard.append(rows)
 
-        reply_markup = InlineKeyboardMarkup(keyboard_auto)
+        return InlineKeyboardMarkup(keyboard)
+
+    async def _send_keyboard_enum(
+        self,
+        enum: EnumType,
+        line_width: int,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ) -> None:
+        reply_markup = self._generate_markup(enum, line_width, update)
 
         await update.message.reply_text("Please choose:", reply_markup=reply_markup)  # type: ignore
 
@@ -128,13 +129,30 @@ class Bot:
     async def send_keyboard_vehicules(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
-        await self._send_keyboard_enum(VehiculeType, 2, update, context)
+        await self._send_keyboard_enum(VehiculeType, 3, update, context)
 
     def _parse_query(self, query: CallbackQuery | None):
         if query is None:
-            return
-        data = query.data.split(" ")[-1]
-        data = Tier(data)
+            return None
+        raw = query.data.split(" ")[-1]
+
+        for enum_cls in (Tier, VehiculeType, Nation):
+            try:
+                return enum_cls(raw)
+            except ValueError:
+                pass
+
+        raise ValueError(f"Valeur inconnue : {raw}")
+
+    def _add_or_remove(
+        self,
+        data: Tier | VehiculeType | Nation,
+        list: list[Tier] | list[VehiculeType] | list[Nation],
+    ):
+        if data in list:
+            list.remove(data)
+        else:
+            list.append(data)
 
     async def button(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Parses the CallbackQuery and updates the message text."""
@@ -145,12 +163,25 @@ class Bot:
         await query.answer()  # type: ignore
 
         user_config = self.users_configs[update.effective_user.id]
-
         data = self._parse_query(query)
+        new_markup = None
+        match data:
+            case Tier():
+                self._add_or_remove(data, user_config.selected_tiers)
+                new_markup = self._generate_markup(Tier, 4, update)
+            case VehiculeType():
+                self._add_or_remove(data, user_config.selected_types)
+                new_markup = self._generate_markup(VehiculeType, 3, update)
+            case Nation():
+                self._add_or_remove(data, user_config.selected_nations)
+                new_markup = self._generate_markup(Nation, 3, update)
 
-        # if tier not in user_config.selected_tiers:
-        #     user_config.selected_tiers.append(tier)
-        # else:
-        #     user_config.selected_tiers.remove(tier)
+        # await query.edit_message_text(text=f"Selected: {data}")  # type: ignore
 
-        await query.edit_message_text(text=f"Selected tiers: {data}")  # type: ignore
+        await query.edit_message_reply_markup(new_markup)
+
+    async def scrap(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        base_url = (
+            "https://store.gaijin.net/catalog.php?category=WarThunderPacks&search="
+        )
+        user_config = self.users_configs[update.effective_user.id]
