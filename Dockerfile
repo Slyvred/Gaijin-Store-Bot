@@ -12,4 +12,4 @@ COPY src/ .
 ENV PYTHONUNBUFFERED=1
 
 # Commande pour exécuter l'application
-CMD ["python", "src/main.py"]
+CMD ["python", "main.py"]
