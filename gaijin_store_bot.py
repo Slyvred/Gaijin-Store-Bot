@@ -1,11 +1,9 @@
-import logging
 from collections import defaultdict
-from dataclasses import dataclass, field
-from enum import Enum, EnumType
+from enum import EnumType
 
 import requests as rq
 from bs4 import BeautifulSoup
-from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
     ApplicationBuilder,
@@ -14,66 +12,17 @@ from telegram.ext import (
     ContextTypes,
 )
 
-
-def escape_md_v2(text: str) -> str:
-    escape_chars = r"_*[]()~`>#+-=|{}.!\\"
-    return "".join(f"\\{c}" if c in escape_chars else c for c in text)
-
-
-def format_pack(pack):
-    name = escape_md_v2(pack.name)
-    link = escape_md_v2(pack.link)
-    price = escape_md_v2(pack.price)
-    return name, link, price
-
-
-class Tier(Enum):
-    I = "wt_rank1"
-    II = "wt_rank2"
-    III = "wt_rank3"
-    IV = "wt_rank4"
-    V = "wt_rank5"
-    VI = "wt_rank6"
-    VII = "wt_rank7"
-    VIII = "wt_rank8"
-
-
-class Nation(Enum):
-    USSR = "wt_ussr"
-    GERMANY = "wt_germany"
-    USA = "wt_usa"
-    BRITAIN = "wt_britain"
-    JAPAN = "wt_japan"
-    SWEDEN = "wt_sweden"
-    CHINA = "wt_china"
-    FRANCE = "wt_france"
-    ITALY = "wt_italy"
-    # ALL = "all"
-
-
-class VehiculeType(Enum):
-    ARMY = "wt_tanks"
-    AVIATION = "wt_air"
-    FLEET = "wt_navy"
-    HELICOPTER = "wt_helicopters"
-
-
-@dataclass
-class Pack:
-    link: str
-    name: str
-    price: str
-
-
-@dataclass
-class UserConfig:
-    selected_tiers: list[Tier] = field(default_factory=list)
-    selected_types: list[VehiculeType] = field(default_factory=list)
-    selected_nations: list[Nation] = field(default_factory=list)
-    packs: list[Pack] = field(default_factory=list)
-    last_packs: list[Pack] = field(default_factory=list)
-    generated_url: str = "https://store.gaijin.net/catalog.php?category=WarThunderPacks&search=wt_tanks%2Cwt_rank7%2Cwt_rank8%2Cwt_air%2Cwt_helicopters&tag=1"
-    last_url: str = "https://store.gaijin.net/catalog.php?category=WarThunderPacks&search=wt_tanks%2Cwt_rank7%2Cwt_rank8%2Cwt_air%2Cwt_helicopters&tag=1"
+from helpers import (
+    Nation,
+    Pack,
+    Tier,
+    UserConfig,
+    VehiculeType,
+    add_or_remove,
+    escape_md_v2,
+    format_pack,
+    parse_query,
+)
 
 
 class Bot:
@@ -96,7 +45,7 @@ class Bot:
         keyboard = []
         rows = []
 
-        user_config = self.users_configs[update.effective_chat.id]
+        user_config = self.users_configs[update.effective_chat.id]  # type:ignore
 
         for item in enum:
             text = ""
@@ -120,7 +69,7 @@ class Bot:
                         else str(item.name).capitalize()
                     )
 
-            rows.append(InlineKeyboardButton(text=text, callback_data=item.value))
+            rows.append(InlineKeyboardButton(text=text, callback_data=item.value))  # type:ignore
             if len(rows) == line_width:
                 keyboard.append(rows)
                 rows = []
@@ -157,30 +106,6 @@ class Bot:
     ) -> None:
         await self._send_keyboard_enum(VehiculeType, 3, update, context)
 
-    def _parse_query(self, query: CallbackQuery | None):
-        if query is None:
-            return None
-        raw = query.data.split(" ")[-1]
-
-        for enum_cls in (Tier, VehiculeType, Nation):
-            try:
-                return enum_cls(raw)
-            except ValueError:
-                pass
-
-        raise ValueError(f"Valeur inconnue : {raw}")
-
-    def _add_or_remove(
-        self,
-        data: Tier | VehiculeType | Nation,
-        list: list[Tier] | list[VehiculeType] | list[Nation],
-    ):
-        if data in list:
-            list.remove(data)  # type: ignore
-
-        else:
-            list.append(data)  # type: ignore
-
     async def button(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Parses the CallbackQuery and updates the message text."""
         query = update.callback_query
@@ -191,17 +116,17 @@ class Bot:
 
         user_config = self.users_configs[update.effective_chat.id]  # type: ignore
 
-        data = self._parse_query(query)
+        data = parse_query(query)
         new_markup = None
         match data:
             case Tier():
-                self._add_or_remove(data, user_config.selected_tiers)
+                add_or_remove(data, user_config.selected_tiers)
                 new_markup = self._generate_markup(Tier, 4, update)
             case VehiculeType():
-                self._add_or_remove(data, user_config.selected_types)
+                add_or_remove(data, user_config.selected_types)
                 new_markup = self._generate_markup(VehiculeType, 3, update)
             case Nation():
-                self._add_or_remove(data, user_config.selected_nations)
+                add_or_remove(data, user_config.selected_nations)
                 new_markup = self._generate_markup(Nation, 3, update)
 
         await query.edit_message_reply_markup(new_markup)  # type: ignore
@@ -256,8 +181,8 @@ class Bot:
         user_config.generated_url = url
 
     async def packs(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        self._scrap(update.effective_chat.id)  # Scrap packs
-        user_config = self.users_configs[update.effective_chat.id]
+        self._scrap(update.effective_chat.id)  # Scrap packs  # type:ignore
+        user_config = self.users_configs[update.effective_chat.id]  # type:ignore
 
         msg = "\n\n".join(
             f"[{name}]({link})\nPrix : {price}"
