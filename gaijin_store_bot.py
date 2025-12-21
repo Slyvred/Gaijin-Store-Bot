@@ -3,8 +3,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum, EnumType
 
-import bs4
 import requests as rq
+from bs4 import BeautifulSoup
 from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -46,10 +46,20 @@ class VehiculeType(Enum):
 
 
 @dataclass
+class Pack:
+    link: str
+    name: str
+    price: str
+
+
+@dataclass
 class UserConfig:
     selected_tiers: list[Tier] = field(default_factory=list)
     selected_types: list[VehiculeType] = field(default_factory=list)
     selected_nations: list[Nation] = field(default_factory=list)
+    packs: list[Pack] = field(default_factory=list)
+    last_packs: list[Pack] = field(default_factory=list)
+    generated_url: str = "https://store.gaijin.net/catalog.php?category=WarThunderPacks&search=wt_tanks%2Cwt_rank7%2Cwt_rank8%2Cwt_air%2Cwt_helicopters&tag=1"
 
 
 class Bot:
@@ -62,6 +72,7 @@ class Bot:
                 CommandHandler("tiers", self.send_keyboard_tiers),
                 CommandHandler("nations", self.send_keyboard_nations),
                 CommandHandler("vehicles", self.send_keyboard_vehicules),
+                CommandHandler("packs", self.packs),
                 CallbackQueryHandler(self.button),
             ]
         )
@@ -150,9 +161,10 @@ class Bot:
         list: list[Tier] | list[VehiculeType] | list[Nation],
     ):
         if data in list:
-            list.remove(data)
+            list.remove(data)  # type: ignore
+
         else:
-            list.append(data)
+            list.append(data)  # type: ignore
 
     async def button(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Parses the CallbackQuery and updates the message text."""
@@ -162,7 +174,8 @@ class Bot:
         # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
         await query.answer()  # type: ignore
 
-        user_config = self.users_configs[update.effective_user.id]
+        user_config = self.users_configs[update.effective_user.id]  # type: ignore
+
         data = self._parse_query(query)
         new_markup = None
         match data:
@@ -178,10 +191,76 @@ class Bot:
 
         # await query.edit_message_text(text=f"Selected: {data}")  # type: ignore
 
-        await query.edit_message_reply_markup(new_markup)
+        await query.edit_message_reply_markup(new_markup)  # type: ignore
 
-    async def scrap(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        base_url = (
-            "https://store.gaijin.net/catalog.php?category=WarThunderPacks&search="
+    def _scrap(self, update: Update) -> None:
+        user_config = self.users_configs[update.effective_user.id]  # type: ignore
+
+        if user_config is None:
+            return
+
+        nations = ",".join(nation.value for nation in user_config.selected_nations)
+        tiers = ",".join(tier.value for tier in user_config.selected_tiers)
+        vehicles = ",".join(type.value for type in user_config.selected_types)
+
+        url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&search={nations},{vehicles},{tiers}&tag=1"
+        logging.debug(f"URL: {url}")
+        user_config.generated_url = url
+
+        page = rq.get(url)
+        soup = BeautifulSoup(page.content, "html.parser")
+
+        # packs: list[Pack] = []
+
+        packs = soup.find_all(
+            "div", class_="showcase__item product-widget js-cart__cart-item"
         )
-        user_config = self.users_configs[update.effective_user.id]
+
+        labels = [
+            pack.find("div", class_="product-widget-description__title").text.strip()  # type: ignore
+            for pack in packs
+        ]
+
+        links = [
+            str(pack.find("a", class_="product-widget__link").get("href"))  # type: ignore
+            for pack in packs
+        ]
+
+        prices = []
+        # Durant les soldes, le prix est affiché dans une balise différente
+        for pack in packs:
+            price_tag = pack.find(
+                "span", class_="showcase-item-price__default"
+            ) or pack.find("span", class_="showcase-item-price__new")
+
+            if price_tag:
+                prices.append(price_tag.text.strip())
+
+        packs = []
+        for link, name, price in zip(links, labels, prices):
+            packs.append(Pack(link, name, price))
+
+        # Replace packs
+        user_config.last_packs = user_config.packs
+        user_config.packs = packs
+
+    def _escape_md_v2(self, text: str) -> str:
+        escape_chars = r"_*[]()~`>#+-=|{}.!\\"
+        return "".join(f"\\{c}" if c in escape_chars else c for c in text)
+
+    async def packs(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        self._scrap(update)  # Scrap packs
+
+        user_config = self.users_configs[update.effective_user.id]  # type: ignore
+
+        lines = []
+        for pack in user_config.packs:
+            name = self._escape_md_v2(pack.name)
+            link = self._escape_md_v2(pack.link)
+            price = self._escape_md_v2(pack.price)
+
+            lines.append(f"[{name}]({link})\nPrix : {price}")
+
+        msg = "\n\n".join(lines)
+
+        await update.message.reply_markdown_v2(text=msg)  # type: ignore
