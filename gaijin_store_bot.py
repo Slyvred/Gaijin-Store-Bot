@@ -6,12 +6,25 @@ from enum import Enum, EnumType
 import requests as rq
 from bs4 import BeautifulSoup
 from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import ParseMode
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
 )
+
+
+def escape_md_v2(text: str) -> str:
+    escape_chars = r"_*[]()~`>#+-=|{}.!\\"
+    return "".join(f"\\{c}" if c in escape_chars else c for c in text)
+
+
+def format_pack(pack):
+    name = escape_md_v2(pack.name)
+    link = escape_md_v2(pack.link)
+    price = escape_md_v2(pack.price)
+    return name, link, price
 
 
 class Tier(Enum):
@@ -35,7 +48,7 @@ class Nation(Enum):
     CHINA = "wt_china"
     FRANCE = "wt_france"
     ITALY = "wt_italy"
-    ALL = "all"
+    # ALL = "all"
 
 
 class VehiculeType(Enum):
@@ -60,6 +73,7 @@ class UserConfig:
     packs: list[Pack] = field(default_factory=list)
     last_packs: list[Pack] = field(default_factory=list)
     generated_url: str = "https://store.gaijin.net/catalog.php?category=WarThunderPacks&search=wt_tanks%2Cwt_rank7%2Cwt_rank8%2Cwt_air%2Cwt_helicopters&tag=1"
+    last_url: str = "https://store.gaijin.net/catalog.php?category=WarThunderPacks&search=wt_tanks%2Cwt_rank7%2Cwt_rank8%2Cwt_air%2Cwt_helicopters&tag=1"
 
 
 class Bot:
@@ -76,12 +90,13 @@ class Bot:
                 CallbackQueryHandler(self.button),
             ]
         )
+        self.application.job_queue.run_repeating(self.notify, interval=300, first=0)  # type:ignore
 
     def _generate_markup(self, enum: EnumType, line_width: int, update: Update):
         keyboard = []
         rows = []
 
-        user_config = self.users_configs[update.effective_user.id]
+        user_config = self.users_configs[update.effective_chat.id]
 
         for item in enum:
             text = ""
@@ -174,7 +189,7 @@ class Bot:
         # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
         await query.answer()  # type: ignore
 
-        user_config = self.users_configs[update.effective_user.id]  # type: ignore
+        user_config = self.users_configs[update.effective_chat.id]  # type: ignore
 
         data = self._parse_query(query)
         new_markup = None
@@ -189,12 +204,10 @@ class Bot:
                 self._add_or_remove(data, user_config.selected_nations)
                 new_markup = self._generate_markup(Nation, 3, update)
 
-        # await query.edit_message_text(text=f"Selected: {data}")  # type: ignore
-
         await query.edit_message_reply_markup(new_markup)  # type: ignore
 
-    def _scrap(self, update: Update) -> None:
-        user_config = self.users_configs[update.effective_user.id]  # type: ignore
+    def _scrap(self, user_id: int) -> None:
+        user_config = self.users_configs[user_id]  # type: ignore
 
         if user_config is None:
             return
@@ -204,13 +217,9 @@ class Bot:
         vehicles = ",".join(type.value for type in user_config.selected_types)
 
         url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&search={nations},{vehicles},{tiers}&tag=1"
-        logging.debug(f"URL: {url}")
-        user_config.generated_url = url
 
         page = rq.get(url)
         soup = BeautifulSoup(page.content, "html.parser")
-
-        # packs: list[Pack] = []
 
         packs = soup.find_all(
             "div", class_="showcase__item product-widget js-cart__cart-item"
@@ -243,24 +252,57 @@ class Bot:
         # Replace packs
         user_config.last_packs = user_config.packs
         user_config.packs = packs
-
-    def _escape_md_v2(self, text: str) -> str:
-        escape_chars = r"_*[]()~`>#+-=|{}.!\\"
-        return "".join(f"\\{c}" if c in escape_chars else c for c in text)
+        user_config.last_url = user_config.generated_url
+        user_config.generated_url = url
 
     async def packs(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        self._scrap(update)  # Scrap packs
+        self._scrap(update.effective_chat.id)  # Scrap packs
+        user_config = self.users_configs[update.effective_chat.id]
 
-        user_config = self.users_configs[update.effective_user.id]  # type: ignore
-
-        lines = []
-        for pack in user_config.packs:
-            name = self._escape_md_v2(pack.name)
-            link = self._escape_md_v2(pack.link)
-            price = self._escape_md_v2(pack.price)
-
-            lines.append(f"[{name}]({link})\nPrix : {price}")
-
-        msg = "\n\n".join(lines)
+        msg = "\n\n".join(
+            f"[{name}]({link})\nPrix : {price}"
+            for pack in user_config.packs
+            for name, link, price in [format_pack(pack)]
+        )
 
         await update.message.reply_markdown_v2(text=msg)  # type: ignore
+
+    async def notify(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        for id in self.users_configs.keys():
+            user_config = self.users_configs[id]
+            self._scrap(id)
+
+            if user_config.generated_url != user_config.last_url:
+                return
+
+            lines = []
+
+            # Création d’un mapping pour comparaison rapide
+            last_packs_by_name = {pack.name: pack for pack in user_config.last_packs}
+
+            for pack in user_config.packs:
+                name, link, price = format_pack(pack)
+                old_pack = last_packs_by_name.get(pack.name)
+
+                # Nouveau pack
+                if old_pack is None:
+                    lines.append(
+                        f"🚨 Le pack [{name}]({link}) est nouveau \\! 🚨\nPrix : {price}"
+                    )
+                    continue
+
+                # Changement de prix
+                if pack.price != old_pack.price:
+                    old_price = escape_md_v2(old_pack.price)
+                    lines.append(
+                        f"Le prix du pack [{name}]({link}) a changé \\!\n"
+                        f"Ancien prix : {old_price}\n"
+                        f"Nouveau prix : {price}"
+                    )
+
+            msg = "\n\n".join(lines)
+
+            if msg:
+                await context.bot.send_message(
+                    chat_id=id, text=msg, parse_mode=ParseMode.MARKDOWN_V2
+                )
