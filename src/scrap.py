@@ -78,6 +78,9 @@ def scrap(user_config: UserConfig) -> None:
             for future in as_completed(futures):
                 all_packs.extend(future.result())
 
+    # Sort packs by price
+    all_packs.sort(key=lambda p: float(p.price.split(" ")[0]))
+
     # Replace packs
     user_config.last_packs = user_config.packs
     user_config.packs = all_packs
