@@ -83,6 +83,9 @@ def scrap(user_config: UserConfig) -> None:
     #     soup = BeautifulSoup(page.content, "html.parser")
     #     all_packs.extend(_get_packs_for_page(soup))
 
+    # Sort packs by price
+    all_packs.sort(key=lambda p: float(p.price.split(" ")[0]))
+
     # Replace packs
     user_config.last_packs = user_config.packs
     user_config.packs = all_packs
