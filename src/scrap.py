@@ -9,7 +9,7 @@ from helpers import Pack, UserConfig
 def _page_thread(
     session: rq.Session, page_num: int, nations: str, vehicles: str, tiers: str
 ) -> list[Pack]:
-    url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&page={page_num}&search={nations},{vehicles},{tiers}&tag=1"
+    url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&page={page_num}&search={nations},{vehicles},{tiers}&dir=asc&order=price&tag=1"
     page = session.get(url)
     soup = BeautifulSoup(page.content, "html.parser")
     return _get_packs_for_page(soup)
@@ -52,7 +52,7 @@ def scrap(user_config: UserConfig) -> None:
     tiers = ",".join(tier.value for tier in user_config.selected_tiers)
     vehicles = ",".join(type.value for type in user_config.selected_types)
 
-    url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&page=1&search={nations},{vehicles},{tiers}&tag=1"
+    url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&page=1&search={nations},{vehicles},{tiers}&dir=asc&order=price&tag=1"
     all_packs: list[Pack] = []
 
     # Process page 1
@@ -77,15 +77,6 @@ def scrap(user_config: UserConfig) -> None:
 
             for future in as_completed(futures):
                 all_packs.extend(future.result())
-
-    # for page in pages:
-    #     url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&page={page}&search={nations},{vehicles},{tiers}&tag=1"
-    #     page = rq.get(url)
-    #     soup = BeautifulSoup(page.content, "html.parser")
-    #     all_packs.extend(_get_packs_for_page(soup))
-
-    # Sort packs by price
-    all_packs.sort(key=lambda p: float(p.price.split(" ")[0]))
 
     # Replace packs
     user_config.last_packs = user_config.packs
