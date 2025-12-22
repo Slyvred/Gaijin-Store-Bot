@@ -67,15 +67,16 @@ def scrap(user_config: UserConfig) -> None:
         int(page.get_text(strip=True)) for page in pages if page.get_text(strip=True)
     ]
 
-    # Process them in parrallel
-    with ThreadPoolExecutor(max_workers=min(8, len(pages))) as executor:
-        futures = [
-            executor.submit(_page_thread, session, page, nations, vehicles, tiers)
-            for page in pages
-        ]
+    if len(pages) != 0:
+        # Process them in parrallel
+        with ThreadPoolExecutor(max_workers=min(8, len(pages))) as executor:
+            futures = [
+                executor.submit(_page_thread, session, page, nations, vehicles, tiers)
+                for page in pages
+            ]
 
-        for future in as_completed(futures):
-            all_packs.extend(future.result())
+            for future in as_completed(futures):
+                all_packs.extend(future.result())
 
     # for page in pages:
     #     url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&page={page}&search={nations},{vehicles},{tiers}&tag=1"
