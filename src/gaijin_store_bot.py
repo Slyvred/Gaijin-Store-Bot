@@ -1,8 +1,6 @@
 from collections import defaultdict
 from enum import EnumType
 
-import requests as rq
-from bs4 import BeautifulSoup
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
@@ -14,7 +12,6 @@ from telegram.ext import (
 
 from helpers import (
     Nation,
-    Pack,
     Tier,
     UserConfig,
     VehiculeType,
@@ -23,6 +20,7 @@ from helpers import (
     format_pack,
     parse_query,
 )
+from scrap import scrap
 
 
 class Bot:
@@ -131,58 +129,9 @@ class Bot:
 
         await query.edit_message_reply_markup(new_markup)  # type: ignore
 
-    def _scrap(self, user_id: int) -> None:
-        user_config = self.users_configs[user_id]  # type: ignore
-
-        if user_config is None:
-            return
-
-        nations = ",".join(nation.value for nation in user_config.selected_nations)
-        tiers = ",".join(tier.value for tier in user_config.selected_tiers)
-        vehicles = ",".join(type.value for type in user_config.selected_types)
-
-        url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&search={nations},{vehicles},{tiers}&tag=1"
-
-        page = rq.get(url)
-        soup = BeautifulSoup(page.content, "html.parser")
-
-        packs = soup.find_all(
-            "div", class_="showcase__item product-widget js-cart__cart-item"
-        )
-
-        labels = [
-            pack.find("div", class_="product-widget-description__title").text.strip()  # type: ignore
-            for pack in packs
-        ]
-
-        links = [
-            str(pack.find("a", class_="product-widget__link").get("href"))  # type: ignore
-            for pack in packs
-        ]
-
-        prices = []
-        # Durant les soldes, le prix est affiché dans une balise différente
-        for pack in packs:
-            price_tag = pack.find(
-                "span", class_="showcase-item-price__default"
-            ) or pack.find("span", class_="showcase-item-price__new")
-
-            if price_tag:
-                prices.append(price_tag.text.strip())
-
-        packs = []
-        for link, name, price in zip(links, labels, prices):
-            packs.append(Pack(link, name, price))
-
-        # Replace packs
-        user_config.last_packs = user_config.packs
-        user_config.packs = packs
-        user_config.last_url = user_config.generated_url
-        user_config.generated_url = url
-
     async def packs(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        self._scrap(update.effective_chat.id)  # Scrap packs  # type:ignore
         user_config = self.users_configs[update.effective_chat.id]  # type:ignore
+        scrap(user_config)
 
         msg = "\n\n".join(
             f"[{name}]({link})\nPrix : {price}"
@@ -195,7 +144,7 @@ class Bot:
     async def notify(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         for id in self.users_configs.keys():
             user_config = self.users_configs[id]
-            self._scrap(id)
+            scrap(user_config)
 
             if user_config.generated_url != user_config.last_url:
                 return

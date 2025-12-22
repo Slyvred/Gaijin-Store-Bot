@@ -1,6 +1,10 @@
 # Gaijin-Store-Bot 
-This repository contains a Telegram bot that scraps gaijin's premium store (tier 7-8 planes) and sends an alert if a new plane is added  or if prices change
+This repository contains a Telegram bot that scraps gaijin's premium store and sends an alert if a new pack is added or if prices change
 
+Using the bot's commands your are able to filter by selecting:
+- The countries
+- The tiers
+- The vehicle types (air, groud, sea)
 
 ## Installation
 To install and run the Gaijin-Store-Bot, follow these steps:
