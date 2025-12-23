@@ -16,8 +16,8 @@ There are 4 commands:
 - `/packs`: Retrieves the list of premium packs according to the selected tiers, vehicles types and nations.
 
 ### Example
-![Initial selection|80](images/image1.png)
-![Packs retrieval|80](images/image2.png)
+<img src="images/image1.png" alt="Initial selection" width="500" height="auto">
+<img src="images/image2.png" alt="Packs retrieval" width="500" height="auto">
 
 ## Diagram
 
