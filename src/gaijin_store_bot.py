@@ -147,7 +147,7 @@ class Bot:
             scrap(user_config)
 
             if user_config.generated_url != user_config.last_url:
-                return
+                continue  # User changed his settings so we skip him
 
             lines = []
 
