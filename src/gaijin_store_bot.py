@@ -48,7 +48,8 @@ class Bot:
         - /vehicles: choose the vehicle types you want
         - /nations: choose the nations you want
         """
-        await update.message.reply_text(text)  # type: ignore
+        text = escape_md_v2(text)
+        await update.message.reply_markdown_v2(text)  # type: ignore
 
     def _generate_markup(self, enum: EnumType, line_width: int, update: Update):
         keyboard = []
