@@ -30,6 +30,7 @@ class Bot:
 
         self.application.add_handlers(
             [
+                CommandHandler("start", self.start),
                 CommandHandler("tiers", self.send_keyboard_tiers),
                 CommandHandler("nations", self.send_keyboard_nations),
                 CommandHandler("vehicles", self.send_keyboard_vehicules),
@@ -38,6 +39,17 @@ class Bot:
             ]
         )
         self.application.job_queue.run_repeating(self.notify, interval=300, first=0)  # type:ignore
+
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user = update.effective_user
+        text = f"""
+        Hello {user.first_name}! Please set your preferences by running the following commands:
+        - /tiers: choose the tiers you want
+        - /vehicles: choose the vehicle types you want
+        - /nations: choose the nations you want
+        """
+        text = escape_md_v2(text)
+        await update.message.reply_markdown_v2(text)  # type: ignore
 
     def _generate_markup(self, enum: EnumType, line_width: int, update: Update):
         keyboard = []
@@ -147,7 +159,7 @@ class Bot:
             scrap(user_config)
 
             if user_config.generated_url != user_config.last_url:
-                return
+                continue  # User changed their settings so we skip them
 
             lines = []
 

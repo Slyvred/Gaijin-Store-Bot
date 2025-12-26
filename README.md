@@ -6,6 +6,60 @@ Using the bot's commands your are able to filter by selecting:
 - The tiers
 - The vehicle types (air, groud, sea)
 
+## How it works
+
+There are 4 commands:
+
+- `/tiers`: Allows you to select the tiers you are interested in
+- `/vehicles`: Allows you to select the type of vehicles you want
+- `/nations`: Allows you to select the nations you want
+- `/packs`: Retrieves the list of premium packs according to the selected tiers, vehicles types and nations.
+
+### Example
+<img src="images/image1.png" alt="Initial selection" width="500" height="auto">
+<img src="images/image2.png" alt="Packs retrieval" width="500" height="auto">
+
+## Diagram
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant B as Telegram Bot
+    participant G as Gaijin Store (War Thunder)
+    participant D as Cache
+
+    Note over U, B: Configuration Phase
+    U->>B: /nations, /ranks, or /vehicles
+    B-->>U: Sends selection keyboard
+    U->>B: Selects option
+    B->>D: Store user preferences
+
+    Note over U, G: On-Demand Request
+    U->>B: /packs
+    B->>D: Fetch user preferences
+    B->>B: Build URL from user preferences
+    B->>G: Scrap page
+    G-->>B: Return HTML/Data
+    B->>D: Store latest scrap result
+    B-->>U: Send formatted packs & prices
+
+    Note over B, G: Automated Polling (Every 300s)
+    loop For each user
+        B->>B: Build dynamic URL from stored prefs
+        B->>G: Scrap page
+        G-->>B: Return current HTML/Data
+        B->>D: Compare with last stored scrap
+        
+        alt New Element Found
+            B->>U: 🔔 Notification: New items available!
+            B->>D: Update cache
+        else Price Changed
+            B->>U: 📉 Notification: Prices have been updated!
+            B->>D: Update cache
+        end
+    end
+```
+
 ## Installation
 To install and run the Gaijin-Store-Bot, follow these steps:
 
