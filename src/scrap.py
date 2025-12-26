@@ -1,7 +1,8 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
+# from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import requests as rq
+# import requests as rq
 from bs4 import BeautifulSoup
+from curl_cffi import requests as rq
 
 from helpers import Pack, UserConfig
 
@@ -47,16 +48,25 @@ def _get_packs_for_page(soup: BeautifulSoup) -> list[Pack]:
 
 
 def scrap(user_config: UserConfig) -> None:
-    nations = ",".join(nation.value for nation in user_config.selected_nations)
-    tiers = ",".join(tier.value for tier in user_config.selected_tiers)
-    vehicles = ",".join(type.value for type in user_config.selected_types)
+    nations = "%2C".join(nation.value for nation in user_config.selected_nations)
+    tiers = "%2C".join(tier.value for tier in user_config.selected_tiers)
+    vehicles = "%2C".join(type.value for type in user_config.selected_types)
 
-    url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&page=1&search={nations},{vehicles},{tiers}&dir=asc&order=price&tag=1"
+    url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&page=1&search={nations}%2C{vehicles}%2C{tiers}&tag=1"
     all_packs: list[Pack] = []
+    print(url)
 
     # Process page 1
     session = rq.Session()  # shared session for speed
-    page = session.get(url)
+    # session.headers.update(
+    #     {
+    #         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+    #     }
+    # )
+    page = session.get(url, impersonate="chrome142")
+    if page.status_code != 200:
+        print(f"ERROR: Failed to scrap page, status_code={page.status_code}")
+
     soup = BeautifulSoup(page.content, "html.parser")
     all_packs.extend(_get_packs_for_page(soup))
 
@@ -78,8 +88,13 @@ def scrap(user_config: UserConfig) -> None:
     #             all_packs.extend(future.result())
 
     for page in pages:
-        url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&page={page}&search={nations},{vehicles},{tiers}&dir=asc&order=price&tag=1"
-        page = session.get(url)
+        url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&page={page}&search={nations}%2C{vehicles}%2C{tiers}&tag=1"
+        print(url)
+        page = session.get(url, impersonate="chrome142")
+
+        if page.status_code != 200:
+            print(f"ERROR: Failed to scrap page, status_code={page.status_code}")
+
         soup = BeautifulSoup(page.content, "html.parser")
         all_packs.extend(_get_packs_for_page(soup))
 
