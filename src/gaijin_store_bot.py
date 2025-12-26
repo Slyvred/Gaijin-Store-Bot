@@ -178,6 +178,7 @@ class Bot:
                     lines.append(
                         f"🚨 Le pack [{name}]({link}) est nouveau \\! 🚨\nPrix : {price}"
                     )
+                    print(f"INFO: Nouveau pack detecté: [{name}]({link})")
                     continue
 
                 # Changement de prix

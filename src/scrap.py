@@ -1,6 +1,6 @@
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests as rq
 from bs4 import BeautifulSoup
 from requests.sessions import Session
@@ -10,18 +10,18 @@ from helpers import Pack, UserConfig
 flaresolverr_url = str(os.getenv("FLARESOLVERR_URL"))
 
 
-def _page_thread(
-    session: rq.Session, page_num: int, nations: str, vehicles: str, tiers: str
-) -> list[Pack]:
-    url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&page={page_num}&search={nations}%2C{vehicles}%2C{tiers}&tag=1"
-    page = session.get(url)
+# def _page_thread(
+#     session: rq.Session, page_num: int, nations: str, vehicles: str, tiers: str
+# ) -> list[Pack]:
+#     url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&page={page_num}&search={nations}%2C{vehicles}%2C{tiers}&tag=1"
+#     page = session.get(url)
 
-    if page.status_code != 200:
-        print(f"ERROR: Failed to scrap page, status_code={page.status_code}")
-        page = _scrap_with_flaresolverr(url, session)
+#     if page.status_code != 200:
+#         print(f"ERROR: Failed to scrap page, status_code={page.status_code}")
+#         page = _scrap_with_flaresolverr(url, session)
 
-    soup = BeautifulSoup(page.text, "html.parser")
-    return _get_packs_for_page(soup)
+#     soup = BeautifulSoup(page.text, "html.parser")
+#     return _get_packs_for_page(soup)
 
 
 def _scrap_with_flaresolverr(url: str, session: Session) -> dict[str, str] | None:
@@ -104,6 +104,10 @@ def scrap(user_config: UserConfig) -> None:
         print(f"ERROR: Failed to scrap page, status_code={page.status_code}")
         page = _scrap_with_flaresolverr(url, session)
 
+    if page is None:
+        print("ERROR: Failed to scrap page with flaresolverr, aborting")
+        return
+
     soup = BeautifulSoup(page.text, "html.parser")
     all_packs.extend(_get_packs_for_page(soup))
 
@@ -113,28 +117,32 @@ def scrap(user_config: UserConfig) -> None:
         int(page.get_text(strip=True)) for page in pages if page.get_text(strip=True)
     ]
 
-    if len(pages) != 0:
-        # Process them in parrallel
-        with ThreadPoolExecutor(max_workers=min(8, len(pages))) as executor:
-            futures = [
-                executor.submit(_page_thread, session, page, nations, vehicles, tiers)
-                for page in pages
-            ]
+    # if len(pages) != 0:
+    #     # Process them in parrallel
+    #     with ThreadPoolExecutor(max_workers=min(8, len(pages))) as executor:
+    #         futures = [
+    #             executor.submit(_page_thread, session, page, nations, vehicles, tiers)
+    #             for page in pages
+    #         ]
 
-            for future in as_completed(futures):
-                all_packs.extend(future.result())
+    #         for future in as_completed(futures):
+    #             all_packs.extend(future.result())
 
-    # for page in pages:
-    #     url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&page={page}&search={nations}%2C{vehicles}%2C{tiers}&tag=1"
-    #     print(url)
-    #     page = session.get(url)
+    for page in pages:
+        url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&page={page}&search={nations}%2C{vehicles}%2C{tiers}&tag=1"
+        print(url)
+        page = session.get(url)
 
-    #     if page.status_code != 200:
-    #         print(f"ERROR: Failed to scrap page, status_code={page.status_code}")
-    #         page = _scrap_with_flaresolverr(url, session)
+        if page.status_code != 200:
+            print(f"ERROR: Failed to scrap page, status_code={page.status_code}")
+            page = _scrap_with_flaresolverr(url, session)
 
-    #     soup = BeautifulSoup(page.text, "html.parser")
-    #     all_packs.extend(_get_packs_for_page(soup))
+        if page is None:
+            print("ERROR: Failed to scrap page with flaresolverr, aborting")
+            return
+
+        soup = BeautifulSoup(page.text, "html.parser")
+        all_packs.extend(_get_packs_for_page(soup))
 
     # Sort packs by price
     all_packs.sort(key=lambda p: float(p.price.split(" ")[0]))
