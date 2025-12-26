@@ -1,18 +1,54 @@
-# from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# import requests as rq
+import requests as rq
 from bs4 import BeautifulSoup
-from curl_cffi import requests as rq
+from requests.sessions import Session
 
 from helpers import Pack, UserConfig
 
-# def _page_thread(
-#     session: rq.Session, page_num: int, nations: str, vehicles: str, tiers: str
-# ) -> list[Pack]:
-#     url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&page={page_num}&search={nations},{vehicles},{tiers}&dir=asc&order=price&tag=1"
-#     page = session.get(url)
-#     soup = BeautifulSoup(page.content, "html.parser")
-#     return _get_packs_for_page(soup)
+flaresolverr_url = str(os.getenv("FLARESOLVERR_URL"))
+
+
+def _page_thread(
+    session: rq.Session, page_num: int, nations: str, vehicles: str, tiers: str
+) -> list[Pack]:
+    url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&page={page_num}&search={nations}%2C{vehicles}%2C{tiers}&tag=1"
+    page = session.get(url)
+
+    if page.status_code != 200:
+        print(f"ERROR: Failed to scrap page, status_code={page.status_code}")
+        page = _scrap_with_flaresolverr(url, session)
+
+    soup = BeautifulSoup(page.text, "html.parser")
+    return _get_packs_for_page(soup)
+
+
+def _scrap_with_flaresolverr(url: str, session: Session) -> dict[str, str] | None:
+    payload = {
+        "cmd": "request.get",
+        "url": url,
+        "maxTimeout": 10000,
+    }
+
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        response = session.post(flaresolverr_url, headers=headers, json=payload)
+        response_data = response.json()
+
+        if response_data.get("status") == "ok":
+            html_content = response_data["solution"]["response"]
+            # cookies = response_data["solution"]["cookies"]
+            print("Cloudflare challenge solved !")
+            return {"text": html_content}
+        else:
+            print(f"FlareSolverr failed: {response_data.get('message')}")
+            return None
+
+    except Exception as e:
+        print(f"Error : {e}")
+        return None
 
 
 def _get_packs_for_page(soup: BeautifulSoup) -> list[Pack]:
@@ -57,17 +93,18 @@ def scrap(user_config: UserConfig) -> None:
     print(url)
 
     # Process page 1
-    session = rq.Session()  # shared session for speed
-    # session.headers.update(
-    #     {
-    #         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
-    #     }
-    # )
-    page = session.get(url, impersonate="chrome142")
+    session = rq.Session()
+    session.headers.update(
+        {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+        }
+    )
+    page = session.get(url)
     if page.status_code != 200:
         print(f"ERROR: Failed to scrap page, status_code={page.status_code}")
+        page = _scrap_with_flaresolverr(url, session)
 
-    soup = BeautifulSoup(page.content, "html.parser")
+    soup = BeautifulSoup(page.text, "html.parser")
     all_packs.extend(_get_packs_for_page(soup))
 
     # Get other pages
@@ -76,27 +113,28 @@ def scrap(user_config: UserConfig) -> None:
         int(page.get_text(strip=True)) for page in pages if page.get_text(strip=True)
     ]
 
-    # if len(pages) != 0:
-    #     # Process them in parrallel
-    #     with ThreadPoolExecutor(max_workers=min(8, len(pages))) as executor:
-    #         futures = [
-    #             executor.submit(_page_thread, session, page, nations, vehicles, tiers)
-    #             for page in pages
-    #         ]
+    if len(pages) != 0:
+        # Process them in parrallel
+        with ThreadPoolExecutor(max_workers=min(8, len(pages))) as executor:
+            futures = [
+                executor.submit(_page_thread, session, page, nations, vehicles, tiers)
+                for page in pages
+            ]
 
-    #         for future in as_completed(futures):
-    #             all_packs.extend(future.result())
+            for future in as_completed(futures):
+                all_packs.extend(future.result())
 
-    for page in pages:
-        url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&page={page}&search={nations}%2C{vehicles}%2C{tiers}&tag=1"
-        print(url)
-        page = session.get(url, impersonate="chrome142")
+    # for page in pages:
+    #     url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&page={page}&search={nations}%2C{vehicles}%2C{tiers}&tag=1"
+    #     print(url)
+    #     page = session.get(url)
 
-        if page.status_code != 200:
-            print(f"ERROR: Failed to scrap page, status_code={page.status_code}")
+    #     if page.status_code != 200:
+    #         print(f"ERROR: Failed to scrap page, status_code={page.status_code}")
+    #         page = _scrap_with_flaresolverr(url, session)
 
-        soup = BeautifulSoup(page.content, "html.parser")
-        all_packs.extend(_get_packs_for_page(soup))
+    #     soup = BeautifulSoup(page.text, "html.parser")
+    #     all_packs.extend(_get_packs_for_page(soup))
 
     # Sort packs by price
     all_packs.sort(key=lambda p: float(p.price.split(" ")[0]))
