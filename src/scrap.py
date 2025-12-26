@@ -5,14 +5,13 @@ from bs4 import BeautifulSoup
 
 from helpers import Pack, UserConfig
 
-
-def _page_thread(
-    session: rq.Session, page_num: int, nations: str, vehicles: str, tiers: str
-) -> list[Pack]:
-    url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&page={page_num}&search={nations},{vehicles},{tiers}&dir=asc&order=price&tag=1"
-    page = session.get(url)
-    soup = BeautifulSoup(page.content, "html.parser")
-    return _get_packs_for_page(soup)
+# def _page_thread(
+#     session: rq.Session, page_num: int, nations: str, vehicles: str, tiers: str
+# ) -> list[Pack]:
+#     url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&page={page_num}&search={nations},{vehicles},{tiers}&dir=asc&order=price&tag=1"
+#     page = session.get(url)
+#     soup = BeautifulSoup(page.content, "html.parser")
+#     return _get_packs_for_page(soup)
 
 
 def _get_packs_for_page(soup: BeautifulSoup) -> list[Pack]:
@@ -67,16 +66,22 @@ def scrap(user_config: UserConfig) -> None:
         int(page.get_text(strip=True)) for page in pages if page.get_text(strip=True)
     ]
 
-    if len(pages) != 0:
-        # Process them in parrallel
-        with ThreadPoolExecutor(max_workers=min(8, len(pages))) as executor:
-            futures = [
-                executor.submit(_page_thread, session, page, nations, vehicles, tiers)
-                for page in pages
-            ]
+    # if len(pages) != 0:
+    #     # Process them in parrallel
+    #     with ThreadPoolExecutor(max_workers=min(8, len(pages))) as executor:
+    #         futures = [
+    #             executor.submit(_page_thread, session, page, nations, vehicles, tiers)
+    #             for page in pages
+    #         ]
 
-            for future in as_completed(futures):
-                all_packs.extend(future.result())
+    #         for future in as_completed(futures):
+    #             all_packs.extend(future.result())
+
+    for page in pages:
+        url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&page={page}&search={nations},{vehicles},{tiers}&dir=asc&order=price&tag=1"
+        page = session.get(url)
+        soup = BeautifulSoup(page.content, "html.parser")
+        all_packs.extend(_get_packs_for_page(soup))
 
     # Sort packs by price
     all_packs.sort(key=lambda p: float(p.price.split(" ")[0]))
