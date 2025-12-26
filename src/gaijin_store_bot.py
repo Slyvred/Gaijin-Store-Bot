@@ -152,7 +152,7 @@ class Bot:
         )
 
         if msg == "":
-            msg = "No pack found for the selected filters"
+            msg = "No packs found for the selected filters"
 
         await update.message.reply_markdown_v2(text=msg)  # type: ignore
 
