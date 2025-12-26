@@ -151,6 +151,9 @@ class Bot:
             for name, link, price in [format_pack(pack)]
         )
 
+        if msg is None:
+            msg = "No pack found for the selected filters"
+
         await update.message.reply_markdown_v2(text=msg)  # type: ignore
 
     async def notify(self, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -187,6 +190,9 @@ class Bot:
                     )
 
             msg = "\n\n".join(lines)
+
+            if msg is None:
+                msg = "No pack found for the selected filters"
 
             if msg:
                 await context.bot.send_message(
