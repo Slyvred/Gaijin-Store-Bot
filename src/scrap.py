@@ -1,6 +1,6 @@
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests as rq
 from bs4 import BeautifulSoup
 from requests.sessions import Session
@@ -10,18 +10,20 @@ from helpers import Pack, UserConfig
 flaresolverr_url = str(os.getenv("FLARESOLVERR_URL"))
 
 
-# def _page_thread(
-#     session: rq.Session, page_num: int, nations: str, vehicles: str, tiers: str
-# ) -> list[Pack]:
-#     url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&page={page_num}&search={nations}%2C{vehicles}%2C{tiers}&tag=1"
-#     page = session.get(url)
+def _page_thread(
+    session: rq.Session, page_num: int, nations: str, vehicles: str, tiers: str
+) -> list[Pack]:
+    url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&page={page_num}&search={nations}%2C{vehicles}%2C{tiers}&tag=1"
+    page = session.get(url)
 
-#     if page.status_code != 200:
-#         print(f"ERROR: Failed to scrap page, status_code={page.status_code}")
-#         page = _scrap_with_flaresolverr(url, session)
+    if page.status_code != 200:
+        print(f"ERROR: Failed to scrap page, status_code={page.status_code}")
+        page = _scrap_with_flaresolverr(url, session)
+        if page is None:
+            return []
 
-#     soup = BeautifulSoup(page.text, "html.parser")
-#     return _get_packs_for_page(soup)
+    soup = BeautifulSoup(page.text, "html.parser")
+    return _get_packs_for_page(soup)
 
 
 def _scrap_with_flaresolverr(url: str, session: Session) -> dict[str, str] | None:
@@ -57,28 +59,30 @@ def _get_packs_for_page(soup: BeautifulSoup) -> list[Pack]:
         "div", class_="showcase__item product-widget js-cart__cart-item"
     )
 
-    labels = [
-        pack.find("div", class_="product-widget-description__title").text.strip()  # type: ignore
-        for pack in packs
-    ]
-
-    links = [
-        str(pack.find("a", class_="product-widget__link").get("href"))  # type: ignore
-        for pack in packs
-    ]
-
-    prices = []
-    # Durant les soldes, le prix est affiché dans une balise différente
     for pack in packs:
-        price_tag = pack.find(
-            "span", class_="showcase-item-price__default"
-        ) or pack.find("span", class_="showcase-item-price__new")
+        try:
+            # Extraction sécurisée de chaque élément
+            name_tag = pack.find("div", class_="product-widget-description__title")  # type:ignore
+            link_tag = pack.find("a", class_="product-widget__link")  # type:ignore
 
-        if price_tag:
-            prices.append(price_tag.text.strip())
+            # Gestion du prix avec fallback
+            price_tag = (
+                pack.find("span", class_="showcase-item-price__default")  # type:ignore
+                or pack.find("span", class_="showcase-item-price__new")  # type:ignore
+            )
 
-    for link, name, price in zip(links, labels, prices):
-        all_packs.append(Pack(link, name, price))
+            if name_tag and link_tag and price_tag:
+                name = name_tag.text.strip()
+                link = str(link_tag.get("href"))
+                price = price_tag.text.strip()
+                all_packs.append(Pack(link, name, price))
+            else:
+                print(
+                    f"WARNING: Incomplete data for a pack on this page. Name: {name_tag.text if name_tag else 'N/A'}"
+                )
+
+        except Exception as e:
+            print(f"ERROR parsing individual pack: {e}")
 
     return all_packs
 
@@ -88,7 +92,7 @@ def scrap(user_config: UserConfig) -> None:
     tiers = "%2C".join(tier.value for tier in user_config.selected_tiers)
     vehicles = "%2C".join(type.value for type in user_config.selected_types)
 
-    url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&page=1&search={nations}%2C{vehicles}%2C{tiers}&tag=1"
+    url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&search={nations}%2C{vehicles}%2C{tiers}&tag=1"
     all_packs: list[Pack] = []
     print(url)
 
@@ -117,32 +121,16 @@ def scrap(user_config: UserConfig) -> None:
         int(page.get_text(strip=True)) for page in pages if page.get_text(strip=True)
     ]
 
-    # if len(pages) != 0:
-    #     # Process them in parrallel
-    #     with ThreadPoolExecutor(max_workers=min(8, len(pages))) as executor:
-    #         futures = [
-    #             executor.submit(_page_thread, session, page, nations, vehicles, tiers)
-    #             for page in pages
-    #         ]
+    if len(pages) != 0:
+        # Process them in parrallel
+        with ThreadPoolExecutor(max_workers=min(8, len(pages))) as executor:
+            futures = [
+                executor.submit(_page_thread, session, page, nations, vehicles, tiers)
+                for page in pages
+            ]
 
-    #         for future in as_completed(futures):
-    #             all_packs.extend(future.result())
-
-    for page in pages:
-        url = f"https://store.gaijin.net/catalog.php?category=WarThunderPacks&dir=asc&order=price&page={page}&search={nations}%2C{vehicles}%2C{tiers}&tag=1"
-        print(url)
-        page = session.get(url)
-
-        if page.status_code != 200:
-            print(f"ERROR: Failed to scrap page, status_code={page.status_code}")
-            page = _scrap_with_flaresolverr(url, session)
-
-        if page is None:
-            print("ERROR: Failed to scrap page with flaresolverr, aborting")
-            return
-
-        soup = BeautifulSoup(page.text, "html.parser")
-        all_packs.extend(_get_packs_for_page(soup))
+            for future in as_completed(futures):
+                all_packs.extend(future.result())
 
     # Sort packs by price
     all_packs.sort(key=lambda p: float(p.price.split(" ")[0]))
