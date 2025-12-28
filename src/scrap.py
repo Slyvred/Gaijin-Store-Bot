@@ -132,6 +132,14 @@ def scrap(user_config: UserConfig) -> None:
             for future in as_completed(futures):
                 all_packs.extend(future.result())
 
+    # If we scrapped less packs than before for the same url, it means that one disappeared from the store
+    # Which is kind of impossible
+    if len(all_packs) < len(user_config.packs):
+        print(
+            "ERROR: Scrapping error detected, less packs obtained with same filter, retrying..."
+        )
+        scrap(user_config)
+
     # Sort packs by price
     all_packs.sort(key=lambda p: float(p.price.split(" ")[0]))
 
