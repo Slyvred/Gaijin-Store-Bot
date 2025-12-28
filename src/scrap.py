@@ -134,7 +134,10 @@ def scrap(user_config: UserConfig) -> None:
 
     # If we scrapped less packs than before for the same url, it means that one disappeared from the store
     # Which is kind of impossible
-    if len(all_packs) < len(user_config.packs):
+    if (
+        len(all_packs) < len(user_config.packs)
+        and user_config.generated_url == user_config.last_url
+    ):
         print(
             "ERROR: Scrapping error detected, less packs obtained with same filter, retrying..."
         )
