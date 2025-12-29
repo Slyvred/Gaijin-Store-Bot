@@ -1,4 +1,5 @@
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests as rq
@@ -87,7 +88,11 @@ def _get_packs_for_page(soup: BeautifulSoup) -> list[Pack]:
     return all_packs
 
 
-def scrap(user_config: UserConfig) -> None:
+def scrap(user_config: UserConfig, retries: int = 0) -> None:
+    if retries > 5:
+        print("ERROR: Max number of scrap retries reached, aborting")
+        return
+
     nations = "%2C".join(nation.value for nation in user_config.selected_nations)
     tiers = "%2C".join(tier.value for tier in user_config.selected_tiers)
     vehicles = "%2C".join(type.value for type in user_config.selected_types)
@@ -132,13 +137,14 @@ def scrap(user_config: UserConfig) -> None:
             for future in as_completed(futures):
                 all_packs.extend(future.result())
 
-    # If we scrapped less packs than before for the same url, it means that one disappeared from the store
+    # If we scrapped less packs than before for the same url, it means that one pack disappeared from the store
     # Which is kind of impossible
     if len(all_packs) < len(user_config.packs) and url == user_config.generated_url:
         print(
-            "ERROR: Scrapping error detected, less packs obtained with same filter, retrying..."
+            "ERROR: Scrapping error detected, less packs obtained with same filter, retrying in 5 seconds..."
         )
-        scrap(user_config)
+        time.sleep(5)
+        scrap(user_config, retries + 1)
 
     # Sort packs by price
     all_packs.sort(key=lambda p: float(p.price.split(" ")[0]))
